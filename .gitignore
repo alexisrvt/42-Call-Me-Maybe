@@ -1,0 +1,45 @@
+# =========================
+# Environnement Python
+# =========================
+
+# Fichiers compilés et cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environnements virtuels
+venv/
+env/
+.venv/
+*.virtualenv/
+
+# Distribution et Packaging
+dist/
+build/
+*.egg-info/
+
+# Tests et Couverture
+.coverage
+htmlcov/
+.tox/
+.pytest_cache/
+
+# Fichiers d'environnement (Sécurité)
+.env
+.env.*
+
+# =========================
+# OS & Outils de développement
+# =========================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDEs et Éditeurs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
