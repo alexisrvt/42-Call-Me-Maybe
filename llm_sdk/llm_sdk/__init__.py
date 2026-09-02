@@ -1,5 +1,6 @@
 # ABOUTME: LLM SDK for local model inference using Hugging Face transformers.
-# ABOUTME: Provides Small_LLM_Model class for loading and running causal language models.
+# ABOUTME: Provides Small_LLM_Model class for loading and running causal
+#          language models.
 
 import time
 from typing import Tuple
@@ -24,12 +25,12 @@ class Small_LLM_Model:
         Identifier of the model on the HF Hub.
     device: str | None, default=None
         Computation device. If *None* we automatically select ``mps`` when
-        available on macOS,
-        ``cuda`` when available, otherwise we fall back to ``cpu``.
+        available on macOS, ``cuda`` when available, otherwise we fall back
+        to ``cpu``.
     dtype: torch.dtype | None, default=None
         Numerical precision. When using a GPU or MPS we default to ``float16``
-        to keep memory
-        usage reasonable; on CPU we keep ``float32`` for maximum compatibility.
+        to keep memory usage reasonable; on CPU we keep ``float32`` for
+        maximum compatibility.
     """
 
     def __init__(
