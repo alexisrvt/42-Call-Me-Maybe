@@ -1,16 +1,34 @@
-from llm_sdk import Small_LLM_Model
+from llm_sdk import Small_LLM_Model  # type: ignore
 import numpy as np
 import json
+import time
+import argparse
 import os
-from functions_validation import create_dynamic_validators, load_functions
-from generation import (get_token_masks, force_sequence, generate_string,
-                        generate_number)
+from .functions_validation import create_dynamic_validators, load_functions
+from .generation import (get_token_masks, force_sequence, generate_string,
+                         generate_number)
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Constraint JSON generator for LLM")
+    parser.add_argument(
+        "--input",
+        type=str,
+        default="data/input/function_calling_tests.json",
+        help="Path to JSON file containing the prompts"
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="data/output/function_calling_results.json",
+        help="Destination path for the generated results"
+    )
+    args = parser.parse_args()
+
     model = Small_LLM_Model()
 
-    with open("data/input/function_calling_tests.json", 'r') as f:
+    with open(args.input, 'r', encoding='utf-8') as f:
         prompts_list = json.load(f)
     with open(model.get_path_to_vocab_file(), 'r', encoding='utf-8') as f:
         vocab = json.load(f)
@@ -27,6 +45,9 @@ def main() -> None:
     ]
     id_open_brace = vocab.get("{")
     results_list = []
+
+    print("\nStarting generation...")
+    global_start_time = time.perf_counter()
 
     for prompt in prompts_list:
         prompt_text = prompt["prompt"]
@@ -113,9 +134,15 @@ def main() -> None:
         except json.JSONDecodeError:
             print(f"\n Parsing error for the prompt: {prompt_text}")
 
-    os.makedirs("data/output", exist_ok=True)
-    output_path = "data/output/function_calling_results.json"
-    with open(output_path, "w", encoding="utf-8") as out_file:
+    global_end_time = time.perf_counter()
+    total_time = global_end_time - global_start_time
+    mins, secs = divmod(total_time, 60)
+    print(f"Global generation done in {int(mins)}m {secs:.1f}s")
+
+    output_dir = os.path.dirname(args.output)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+    with open(args.output, "w", encoding="utf-8") as out_file:
         json.dump(results_list, out_file, indent=4)
 
 
