@@ -5,8 +5,8 @@ import time
 import argparse
 import os
 from .functions_validation import create_dynamic_validators, load_functions
-from .generation import (get_token_masks, force_sequence, generate_string,
-                         generate_number)
+from .generation import (get_token_masks, force_sequence,
+                         generate_pydantic_object)
 
 
 def main() -> None:
@@ -36,12 +36,12 @@ def main() -> None:
          "data/input/functions_definition.json", "r", encoding="utf-8") as f:
         system_context = f.read()
 
-    valid_number_token_ids, valid_string_token_ids, closing_quote_token_ids = \
-        get_token_masks(vocab)
+    valid_number_token_ids, valid_string_token_ids, closing_quote_token_ids, \
+        valid_bool_token_ids = get_token_masks(vocab)
     functions_list = load_functions("data/input/functions_definition.json")
     functions_validators = create_dynamic_validators(functions_list)
     valid_function_sequences = [
-        model.encode(func.name)[0].tolist() for func in functions_list
+        model.encode(func["name"])[0].tolist() for func in functions_list
     ]
     id_open_brace = vocab.get("{")
     results_list = []
@@ -94,31 +94,18 @@ def main() -> None:
             ]
             name_token_index += 1
 
-        force_sequence(model, input_ids_list, '", "parameters": {')
+        force_sequence(model, input_ids_list, '", "parameters": ')
 
         current_function = model.decode(active_candidates[0])
         current_validator = functions_validators[current_function]
-        is_first_param = True
-        for field_name, field_info in current_validator.model_fields.items():
-            if is_first_param:
-                key_str = f'"{field_name}": '
-                is_first_param = False
-            else:
-                key_str = f', "{field_name}": '
 
-            force_sequence(model, input_ids_list, key_str)
+        generate_pydantic_object(
+            model, input_ids_list, vocab, current_validator,
+            valid_number_token_ids, valid_string_token_ids,
+            closing_quote_token_ids, valid_bool_token_ids
+        )
 
-            expected_type = field_info.annotation
-            if expected_type == float:
-                generate_number(
-                   model, input_ids_list, vocab, valid_number_token_ids
-                )
-            elif expected_type == str:
-                generate_string(
-                    model, input_ids_list, vocab, valid_string_token_ids,
-                    closing_quote_token_ids
-                )
-        force_sequence(model, input_ids_list, "}}")
+        force_sequence(model, input_ids_list, '}')
         print()
 
         generated_json_string = model.decode(input_ids_list[

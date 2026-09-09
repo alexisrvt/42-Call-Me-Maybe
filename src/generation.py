@@ -1,17 +1,10 @@
 import numpy as np
-# import time
-# from contextlib import contextmanager
+import typing
+from pydantic import BaseModel
 
 
-# @contextmanager
-# def track_logit_time():
-#     start = time.perf_counter()
-#     yield
-#     elapsed = (time.perf_counter() - start) * 1000
-#     print(f" [{elapsed:.1f}ms]", end="", flush=True)
-
-
-def get_token_masks(vocab: dict) -> tuple[list[int], list[int], list[int]]:
+def get_token_masks(vocab: dict) -> tuple[list[int], list[int], list[int],
+                                          list[int]]:
     valid_number_chars = set("0123456789.-")
     valid_number_token_ids = {
         tid for tstr, tid in vocab.items()
@@ -21,7 +14,6 @@ def get_token_masks(vocab: dict) -> tuple[list[int], list[int], list[int]]:
     invalid_string_chars = set("\n\r\t")
     valid_string_token_ids = set()
     closing_quote_token_ids = set()
-
     for tstr, tid in vocab.items():
         if any(c in invalid_string_chars for c in tstr):
             continue
@@ -32,9 +24,14 @@ def get_token_masks(vocab: dict) -> tuple[list[int], list[int], list[int]]:
         else:
             valid_string_token_ids.add(tid)
 
+    valid_bool_token_ids: set[int] = {
+        tid for tstr, tid in vocab.items()
+        if tstr.strip() in ("true", "false")
+    }
+
     return (
         list(valid_number_token_ids), list(valid_string_token_ids),
-        list(closing_quote_token_ids)
+        list(closing_quote_token_ids), list(valid_bool_token_ids)
     )
 
 
@@ -57,7 +54,6 @@ def generate_string(
     max_tokens = 40
 
     while True:
-        # with track_logit_time():
         logits = np.array(model.get_logits_from_input_ids(input_ids_list))
         logits_contraints = np.full_like(logits, -np.inf)
         logits_contraints[valid_string_token_ids] = logits[
@@ -87,7 +83,6 @@ def generate_number(
     max_tokens = 15
 
     while True:
-        # with track_logit_time():
         logits = np.array(model.get_logits_from_input_ids(input_ids_list))
         logits_contraints = np.full_like(logits, -np.inf)
         logits_contraints[valid_number_token_ids] = logits[
@@ -103,3 +98,97 @@ def generate_number(
 
         input_ids_list.append(best_token_id)
         print(model.decode([best_token_id]), end="", flush=True)
+
+
+def generate_boolean(
+        model, input_ids_list: list[int],
+        valid_bool_token_ids: list[int]) -> None:
+    logits = np.array(model.get_logits_from_input_ids(input_ids_list))
+    logits_contraints = np.full_like(logits, -np.inf)
+    logits_contraints[valid_bool_token_ids] = logits[valid_bool_token_ids]
+    best_token_id = int(np.argmax(logits_contraints))
+    input_ids_list.append(best_token_id)
+    print(model.decode([best_token_id]), end="", flush=True)
+
+
+def generate_null(model, input_ids_list: list[int]) -> None:
+    force_sequence(model, input_ids_list, "null")
+
+
+def generate_list(
+        model, input_ids_list: list[int], vocab: dict[str, int],
+        inner_type, valid_string_token_ids, valid_number_token_ids,
+        closing_quote_token_ids, valid_bool_token_ids) -> None:
+    id_open, id_close, id_comma = int(vocab["["]), int(vocab["]"]), \
+        int(vocab[","])
+    input_ids_list.append(id_open)
+    print("[", end="", flush=True)
+
+    max_items = 20
+    item_count = 0
+
+    while True:
+        generate_value(model, input_ids_list, vocab, inner_type,
+                       valid_number_token_ids, valid_string_token_ids,
+                       closing_quote_token_ids, valid_bool_token_ids)
+        item_count += 1
+
+        logits = np.array(model.get_logits_from_input_ids(input_ids_list))
+        logits_contraints = np.full_like(logits, -np.inf)
+        logits_contraints[[id_comma, id_close]] = logits[[id_comma, id_close]]
+        best_token_id = int(np.argmax(logits_contraints))
+        if best_token_id == id_close or item_count >= max_items:
+            input_ids_list.append(id_close)
+            print("]", end="", flush=True)
+            break
+        input_ids_list.append(id_comma)
+        print(",", end="", flush=True)
+
+
+def generate_value(
+        model, input_ids_list: list[int], vocab: dict[str, int],
+        expected_type: type, valid_number_token_ids: list[int],
+        valid_string_token_ids: list[int], closing_quote_token_ids: list[int],
+        valid_bool_token_ids: list[int]) -> None:
+    origin_type = typing.get_origin(expected_type) or expected_type
+    if origin_type in (float, int):
+        generate_number(model, input_ids_list, vocab, valid_number_token_ids)
+    elif origin_type == str:
+        generate_string(
+            model, input_ids_list, vocab, valid_string_token_ids,
+            closing_quote_token_ids)
+    elif origin_type == bool:
+        generate_boolean(model, input_ids_list, valid_bool_token_ids)
+    elif origin_type is type(None):
+        generate_null(model, input_ids_list)
+    elif origin_type is list:
+        inner_type = typing.get_args(expected_type)[0]
+        generate_list(
+            model, input_ids_list, vocab, inner_type, valid_string_token_ids,
+            valid_number_token_ids, closing_quote_token_ids,
+            valid_bool_token_ids)
+    elif isinstance(origin_type, type) and issubclass(origin_type, BaseModel):
+        generate_pydantic_object(
+            model, input_ids_list, vocab, origin_type, valid_number_token_ids,
+            valid_string_token_ids, closing_quote_token_ids,
+            valid_bool_token_ids)
+
+
+def generate_pydantic_object(
+        model, input_ids_list: list[int], vocab: dict[str, int],
+        pydantic_class: type[BaseModel], valid_number_token_ids: list[int],
+        valid_string_token_ids: list[int], closing_quote_token_ids: list[int],
+        valid_bool_token_ids: list[int]) -> None:
+    force_sequence(model, input_ids_list, "{")
+    is_first = True
+
+    for field_name, field_info in pydantic_class.model_fields.items():
+        key_str = f'"{field_name}": ' if is_first else f', "{field_name}": '
+        is_first = False
+        force_sequence(model, input_ids_list, key_str)
+        expected_type = field_info.annotation or str
+        generate_value(
+            model, input_ids_list, vocab, expected_type,
+            valid_number_token_ids, valid_string_token_ids,
+            closing_quote_token_ids, valid_bool_token_ids)
+    force_sequence(model, input_ids_list, "}")

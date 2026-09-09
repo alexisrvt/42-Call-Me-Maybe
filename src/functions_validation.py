@@ -1,40 +1,14 @@
 import json
-from typing import Dict, Any
-from pydantic import BaseModel, create_model
+from json_schema_to_pydantic import create_model  # type: ignore
 
 
-class ParameterDef(BaseModel):
-    type: str
+def load_functions(filepath: str) -> list[dict]:
+    with open(filepath, 'r', encoding='utf-8') as f:
+        return json.load(f)
 
 
-class FunctionDef(BaseModel):
-    name: str
-    description: str
-    parameters: Dict[str, ParameterDef]
-    returns: ParameterDef
-
-
-def load_functions(filepath: str) -> list[FunctionDef]:
-    with open(filepath, 'r') as f:
-        data = json.load(f)
-    return [FunctionDef(**func) for func in data]
-
-
-def create_dynamic_validators(
-        functions: list[FunctionDef]) -> dict[str, type[BaseModel]]:
-    type_mapping = {
-        "number": (float, ...),
-        "string": (str, ...),
-        "boolean": (bool, ...)
+def create_dynamic_validators(functions: list[dict]) -> dict:
+    return {
+        func["name"]: create_model(func.get("parameters", {}))
+        for func in functions
     }
-
-    validators = {}
-
-    for func in functions:
-        fields: dict[str, Any] = {}
-        for param_name, param_def in func.parameters.items():
-            python_type = type_mapping.get(param_def.type, (str, ...))
-            fields[param_name] = python_type
-        DynamicModel = create_model(f"Validator_{func.name}", **fields)
-        validators[func.name] = DynamicModel
-    return validators
