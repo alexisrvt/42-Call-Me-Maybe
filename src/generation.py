@@ -77,7 +77,8 @@ def generate_number(
         model, input_ids_list: list[int], vocab: dict[str, int],
         valid_number_token_ids: list[int]) -> None:
     id_comma = int(vocab[","])
-    id_close_brase = int(vocab["}"])
+    id_close_brace = int(vocab["}"])
+    id_close_bracket = int(vocab["]"])
 
     token_count = 0
     max_tokens = 15
@@ -87,12 +88,13 @@ def generate_number(
         logits_contraints = np.full_like(logits, -np.inf)
         logits_contraints[valid_number_token_ids] = logits[
             valid_number_token_ids]
-        logits_contraints[[id_comma, id_close_brase]] = logits[
-            [id_comma, id_close_brase]]
+        logits_contraints[
+            [id_comma, id_close_brace, id_close_bracket]] = logits[
+            [id_comma, id_close_brace, id_close_bracket]]
         best_token_id = int(np.argmax(logits_contraints))
         token_count += 1
 
-        if best_token_id in (id_comma, id_close_brase) or \
+        if best_token_id in (id_comma, id_close_brace, id_close_bracket) or \
                 token_count >= max_tokens:
             break
 
@@ -119,13 +121,18 @@ def generate_list(
         model, input_ids_list: list[int], vocab: dict[str, int],
         inner_type, valid_string_token_ids, valid_number_token_ids,
         closing_quote_token_ids, valid_bool_token_ids) -> None:
-    id_open, id_close, id_comma = int(vocab["["]), int(vocab["]"]), \
+    id_open, id_close, id_comma_simple = int(vocab["["]), int(vocab["]"]), \
         int(vocab[","])
+    id_comma_space = model.encode(", ")[0].tolist()[0]
     input_ids_list.append(id_open)
     print("[", end="", flush=True)
 
     max_items = 20
     item_count = 0
+
+    is_complex = isinstance(inner_type, type) and issubclass(inner_type,
+                                                             BaseModel)
+    malus = 10.0 if is_complex else 1.0
 
     while True:
         generate_value(model, input_ids_list, vocab, inner_type,
@@ -135,14 +142,14 @@ def generate_list(
 
         logits = np.array(model.get_logits_from_input_ids(input_ids_list))
         logits_contraints = np.full_like(logits, -np.inf)
-        logits_contraints[[id_comma, id_close]] = logits[[id_comma, id_close]]
+        logits_contraints[id_comma_simple] = logits[id_comma_simple]
+        logits_contraints[id_comma_space] = logits[id_comma_space]
+        logits_contraints[id_close] = logits[id_close] - malus
         best_token_id = int(np.argmax(logits_contraints))
         if best_token_id == id_close or item_count >= max_items:
-            input_ids_list.append(id_close)
-            print("]", end="", flush=True)
+            force_sequence(model, input_ids_list, "]")
             break
-        input_ids_list.append(id_comma)
-        print(",", end="", flush=True)
+        force_sequence(model, input_ids_list, ", ")
 
 
 def generate_value(

@@ -8,7 +8,16 @@ def load_functions(filepath: str) -> list[dict]:
 
 
 def create_dynamic_validators(functions: list[dict]) -> dict:
-    return {
-        func["name"]: create_model(func.get("parameters", {}))
-        for func in functions
-    }
+    validators = {}
+    for func in functions:
+        params = func.get("parameters", {})
+        if "properties" not in params:
+            schema = {
+                "type": "object",
+                "properties": params,
+                "required": list(params.keys())
+            }
+        else:
+            schema = params
+        validators[func["name"]] = create_model(schema)
+    return validators

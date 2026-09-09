@@ -54,6 +54,12 @@ def main() -> None:
         print(f"\nPrompt: '{prompt_text}'")
 
         full_prompt = (
+            "You are a strict and precise data extraction AI. Your task is to "
+            "extract ALL requested data into the JSON format.\n"
+            "CRITICAL: When extracting arrays or lists, you MUST include EVERY"
+            " single item mentioned in the user request. "
+            "Do not stop early. Do not invent, hallucinate, or add extra items"
+            ". Be exhaustive.\n\n"
             f"Available functions:\n{system_context}\n\n"
             f"User request: {prompt_text}\n"
         )
