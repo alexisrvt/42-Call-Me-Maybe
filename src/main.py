@@ -13,10 +13,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Constraint JSON generator for LLM")
     parser.add_argument(
+        "--functions_definition",
+        type=str,
+        default="data/input/functions_definition.json",
+        help="Path to the JSON file containing the functions definition"
+    )
+    parser.add_argument(
         "--input",
         type=str,
         default="data/input/function_calling_tests.json",
-        help="Path to JSON file containing the prompts"
+        help="Path to the JSON file containing the prompts"
     )
     parser.add_argument(
         "--output",
@@ -33,12 +39,12 @@ def main() -> None:
     with open(model.get_path_to_vocab_file(), 'r', encoding='utf-8') as f:
         vocab = json.load(f)
     with open(
-         "data/input/functions_definition.json", "r", encoding="utf-8") as f:
+         args.functions_definition, "r", encoding="utf-8") as f:
         system_context = f.read()
 
     valid_number_token_ids, valid_string_token_ids, closing_quote_token_ids, \
         valid_bool_token_ids = get_token_masks(vocab)
-    functions_list = load_functions("data/input/functions_definition.json")
+    functions_list = load_functions(args.functions_definition)
     functions_validators = create_dynamic_validators(functions_list)
     valid_function_sequences = [
         model.encode(func["name"])[0].tolist() for func in functions_list
