@@ -1,14 +1,16 @@
 import json
-from json_schema_to_pydantic import create_model  # type: ignore
+from typing import Any, cast
+from json_schema_to_pydantic import create_model
 
 
-def load_functions(filepath: str) -> list[dict]:
+def load_functions(filepath: str) -> list[dict[str, Any]]:
     with open(filepath, 'r', encoding='utf-8') as f:
-        return json.load(f)
+        return cast(list[dict[str, Any]], json.load(f))
 
 
-def create_dynamic_validators(functions: list[dict]) -> dict:
-    validators = {}
+def create_dynamic_validators(
+        functions: list[dict[str, Any]]) -> dict[str, Any]:
+    validators: dict[str, Any] = {}
     for func in functions:
         params = func.get("parameters", {})
         if "properties" not in params:
@@ -19,5 +21,5 @@ def create_dynamic_validators(functions: list[dict]) -> dict:
             }
         else:
             schema = params
-        validators[func["name"]] = create_model(schema)
+        validators[str(func["name"])] = create_model(schema)
     return validators

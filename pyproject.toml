@@ -18,3 +18,6 @@ members = [
 
 [tool.uv.sources]
 llm-sdk = { workspace = true }
+
+[tool.mypy]
+ignore_missing_imports = true

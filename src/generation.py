@@ -1,10 +1,10 @@
 import numpy as np
-import typing
+from typing import Any, get_origin, get_args
 from pydantic import BaseModel
 
 
-def get_token_masks(vocab: dict) -> tuple[list[int], list[int], list[int],
-                                          list[int]]:
+def get_token_masks(vocab: dict[str, int]) -> tuple[list[int], list[int],
+                                                    list[int], list[int]]:
     valid_number_chars = set("0123456789.-")
     valid_number_token_ids = {
         tid for tstr, tid in vocab.items()
@@ -35,7 +35,7 @@ def get_token_masks(vocab: dict) -> tuple[list[int], list[int], list[int],
     )
 
 
-def force_sequence(model, input_ids_list: list[int], text: str) -> None:
+def force_sequence(model: Any, input_ids_list: list[int], text: str) -> None:
     target_ids = model.encode(text)[0].tolist()
     for expected_token in target_ids:
         input_ids_list.append(expected_token)
@@ -43,7 +43,7 @@ def force_sequence(model, input_ids_list: list[int], text: str) -> None:
 
 
 def generate_string(
-        model, input_ids_list: list[int], vocab: dict[str, int],
+        model: Any, input_ids_list: list[int], vocab: dict[str, int],
         valid_string_token_ids: list[int],
         closing_quote_token_ids: list[int]) -> None:
     id_quote = int(vocab['"'])
@@ -74,7 +74,7 @@ def generate_string(
 
 
 def generate_number(
-        model, input_ids_list: list[int], vocab: dict[str, int],
+        model: Any, input_ids_list: list[int], vocab: dict[str, int],
         valid_number_token_ids: list[int]) -> None:
     id_comma = int(vocab[","])
     id_close_brace = int(vocab["}"])
@@ -103,7 +103,7 @@ def generate_number(
 
 
 def generate_boolean(
-        model, input_ids_list: list[int],
+        model: Any, input_ids_list: list[int],
         valid_bool_token_ids: list[int]) -> None:
     logits = np.array(model.get_logits_from_input_ids(input_ids_list))
     logits_contraints = np.full_like(logits, -np.inf)
@@ -113,14 +113,15 @@ def generate_boolean(
     print(model.decode([best_token_id]), end="", flush=True)
 
 
-def generate_null(model, input_ids_list: list[int]) -> None:
+def generate_null(model: Any, input_ids_list: list[int]) -> None:
     force_sequence(model, input_ids_list, "null")
 
 
 def generate_list(
-        model, input_ids_list: list[int], vocab: dict[str, int],
-        inner_type, valid_string_token_ids, valid_number_token_ids,
-        closing_quote_token_ids, valid_bool_token_ids) -> None:
+        model: Any, input_ids_list: list[int], vocab: dict[str, int],
+        inner_type: type, valid_string_token_ids: list[int],
+        valid_number_token_ids: list[int], closing_quote_token_ids: list[int],
+        valid_bool_token_ids: list[int]) -> None:
     id_open, id_close, id_comma_simple = int(vocab["["]), int(vocab["]"]), \
         int(vocab[","])
     id_comma_space = model.encode(", ")[0].tolist()[0]
@@ -153,11 +154,11 @@ def generate_list(
 
 
 def generate_value(
-        model, input_ids_list: list[int], vocab: dict[str, int],
+        model: Any, input_ids_list: list[int], vocab: dict[str, int],
         expected_type: type, valid_number_token_ids: list[int],
         valid_string_token_ids: list[int], closing_quote_token_ids: list[int],
         valid_bool_token_ids: list[int]) -> None:
-    origin_type = typing.get_origin(expected_type) or expected_type
+    origin_type = get_origin(expected_type) or expected_type
     if origin_type in (float, int):
         generate_number(model, input_ids_list, vocab, valid_number_token_ids)
     elif origin_type == str:
@@ -169,7 +170,7 @@ def generate_value(
     elif origin_type is type(None):
         generate_null(model, input_ids_list)
     elif origin_type is list:
-        inner_type = typing.get_args(expected_type)[0]
+        inner_type = get_args(expected_type)[0]
         generate_list(
             model, input_ids_list, vocab, inner_type, valid_string_token_ids,
             valid_number_token_ids, closing_quote_token_ids,
@@ -182,7 +183,7 @@ def generate_value(
 
 
 def generate_pydantic_object(
-        model, input_ids_list: list[int], vocab: dict[str, int],
+        model: Any, input_ids_list: list[int], vocab: dict[str, int],
         pydantic_class: type[BaseModel], valid_number_token_ids: list[int],
         valid_string_token_ids: list[int], closing_quote_token_ids: list[int],
         valid_bool_token_ids: list[int]) -> None:
