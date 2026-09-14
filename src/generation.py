@@ -5,6 +5,21 @@ from pydantic import BaseModel
 
 def get_token_masks(vocab: dict[str, int]) -> tuple[list[int], list[int],
                                                     list[int], list[int]]:
+    """
+    Pre-calculates valid token IDs for specific JSON data types.
+
+    Args:
+        vocab (dict[str, int]): The BPE vocabulary dictionary mapping strings
+        to token IDs.
+
+    Returns:
+        tuple[list[int], list[int], list[int], list[int]]: A tuple containing
+        four lists of valid token IDs:
+            - Numbers (digits, minus sign, period)
+            - Strings (excluding invalid whitespace characters)
+            - Closing quotes
+            - Booleans ('true' and 'false')
+    """
     valid_number_chars = set("0123456789.-")
     valid_number_token_ids = {
         tid for tstr, tid in vocab.items()
@@ -36,6 +51,19 @@ def get_token_masks(vocab: dict[str, int]) -> tuple[list[int], list[int],
 
 
 def force_sequence(model: Any, input_ids_list: list[int], text: str) -> None:
+    """
+    Forces the model to output an exact string sequence without computing
+    logits.
+
+    Args:
+        model (Any): The LLM instance containing the tokenizer.
+        input_ids_list (list[int]): The current list of generated token IDs
+        (modified in place).
+        text (str): The exact string sequence to inject.
+
+    Returns:
+        None
+    """
     target_ids = model.encode(text)[0].tolist()
     for expected_token in target_ids:
         input_ids_list.append(expected_token)
@@ -46,6 +74,20 @@ def generate_string(
         model: Any, input_ids_list: list[int], vocab: dict[str, int],
         valid_string_token_ids: list[int],
         closing_quote_token_ids: list[int]) -> None:
+    """
+    Generates a constrained JSON string value.
+
+    Args:
+        model (Any): The LLM instance.
+        input_ids_list (list[int]): The current list of generated token IDs.
+        vocab (dict[str, int]): The tokenizer vocabulary.
+        valid_string_token_ids (list[int]): Pre-calculated valid string tokens.
+        closing_quote_token_ids (list[int]): Pre-calculated tokens containing
+        closing quotes.
+
+    Returns:
+        None
+    """
     id_quote = int(vocab['"'])
     input_ids_list.append(id_quote)
     print('"', end="", flush=True)
@@ -76,6 +118,19 @@ def generate_string(
 def generate_number(
         model: Any, input_ids_list: list[int], vocab: dict[str, int],
         valid_number_token_ids: list[int]) -> None:
+    """
+    Generates a constrained JSON numeric value (integer or float).
+
+    Args:
+        model (Any): The LLM instance.
+        input_ids_list (list[int]): The current list of generated token IDs.
+        vocab (dict[str, int]): The tokenizer vocabulary.
+        valid_number_token_ids (list[int]): Pre-calculated valid numeric
+        tokens.
+
+    Returns:
+        None
+    """
     id_comma = int(vocab[","])
     id_close_brace = int(vocab["}"])
     id_close_bracket = int(vocab["]"])
@@ -105,6 +160,17 @@ def generate_number(
 def generate_boolean(
         model: Any, input_ids_list: list[int],
         valid_bool_token_ids: list[int]) -> None:
+    """
+    Generates a constrained JSON boolean value (true/false).
+
+    Args:
+        model (Any): The LLM instance.
+        input_ids_list (list[int]): The current list of generated token IDs.
+        valid_bool_token_ids (list[int]): Pre-calculated boolean tokens.
+
+    Returns:
+        None
+    """
     logits = np.array(model.get_logits_from_input_ids(input_ids_list))
     logits_contraints = np.full_like(logits, -np.inf)
     logits_contraints[valid_bool_token_ids] = logits[valid_bool_token_ids]
@@ -114,6 +180,16 @@ def generate_boolean(
 
 
 def generate_null(model: Any, input_ids_list: list[int]) -> None:
+    """
+    Forces the generation of a JSON null value.
+
+    Args:
+        model (Any): The LLM instance.
+        input_ids_list (list[int]): The current list of generated token IDs.
+
+    Returns:
+        None
+    """
     force_sequence(model, input_ids_list, "null")
 
 
@@ -122,6 +198,26 @@ def generate_list(
         inner_type: type, valid_string_token_ids: list[int],
         valid_number_token_ids: list[int], closing_quote_token_ids: list[int],
         valid_bool_token_ids: list[int]) -> None:
+    """
+    Generates a constrained JSON array, recursively processing internal items.
+
+    Applies a dynamic probability malus to the closing bracket token ']' based
+    on the structural complexity of the internal type to prevent early
+    stopping.
+
+    Args:
+        model (Any): The LLM instance.
+        input_ids_list (list[int]): The current list of generated token IDs.
+        vocab (dict[str, int]): The tokenizer vocabulary.
+        inner_type (type): The expected Python type of the array items.
+        valid_string_token_ids (list[int]): Valid string tokens.
+        valid_number_token_ids (list[int]): Valid numeric tokens.
+        closing_quote_token_ids (list[int]): Valid closing quote tokens.
+        valid_bool_token_ids (list[int]): Valid boolean tokens.
+
+    Returns:
+        None
+    """
     id_open, id_close, id_comma_simple = int(vocab["["]), int(vocab["]"]), \
         int(vocab[","])
     id_comma_space = model.encode(", ")[0].tolist()[0]
@@ -158,6 +254,24 @@ def generate_value(
         expected_type: type, valid_number_token_ids: list[int],
         valid_string_token_ids: list[int], closing_quote_token_ids: list[int],
         valid_bool_token_ids: list[int]) -> None:
+    """
+    Recursive router that delegates generation to the appropriate type-
+    specific function.
+
+    Args:
+        model (Any): The LLM instance.
+        input_ids_list (list[int]): The current list of generated token IDs.
+        vocab (dict[str, int]): The tokenizer vocabulary.
+        expected_type (type): The target Python type/Pydantic model to
+        generate.
+        valid_number_token_ids (list[int]): Valid numeric tokens.
+        valid_string_token_ids (list[int]): Valid string tokens.
+        closing_quote_token_ids (list[int]): Valid closing quote tokens.
+        valid_bool_token_ids (list[int]): Valid boolean tokens.
+
+    Returns:
+        None
+    """
     origin_type = get_origin(expected_type) or expected_type
     if origin_type in (float, int):
         generate_number(model, input_ids_list, vocab, valid_number_token_ids)
@@ -187,6 +301,27 @@ def generate_pydantic_object(
         pydantic_class: type[BaseModel], valid_number_token_ids: list[int],
         valid_string_token_ids: list[int], closing_quote_token_ids: list[int],
         valid_bool_token_ids: list[int]) -> None:
+    """
+    Generates a constrained JSON object corresponding to a Pydantic model.
+
+    Iterates through the model's fields, injecting keys directly via
+    `force_sequence`
+    and recursively calling `generate_value` for field values.
+
+    Args:
+        model (Any): The LLM instance.
+        input_ids_list (list[int]): The current list of generated token IDs.
+        vocab (dict[str, int]): The tokenizer vocabulary.
+        pydantic_class (type[BaseModel]): The Pydantic model class dictating
+        the object schema.
+        valid_number_token_ids (list[int]): Valid numeric tokens.
+        valid_string_token_ids (list[int]): Valid string tokens.
+        closing_quote_token_ids (list[int]): Valid closing quote tokens.
+        valid_bool_token_ids (list[int]): Valid boolean tokens.
+
+    Returns:
+        None
+    """
     force_sequence(model, input_ids_list, "{")
     is_first = True
 

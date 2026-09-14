@@ -10,6 +10,19 @@ from .generation import (get_token_masks, force_sequence,
 
 
 def existing_json_file(path: str) -> str:
+    """
+    Argparse type validator ensuring an input file exists and is a JSON file.
+
+    Args:
+        path (str): The file path provided via CLI.
+
+    Raises:
+        argparse.ArgumentTypeError: If the file does not exist or lacks a
+        .json extension.
+
+    Returns:
+        str: The validated file path.
+    """
     if not os.path.isfile(path):
         raise argparse.ArgumentTypeError(f"The file '{path}' cannot be found.")
     if not path.endswith('.json'):
@@ -20,6 +33,18 @@ def existing_json_file(path: str) -> str:
 
 
 def valid_output_path(path: str) -> str:
+    """
+    Argparse type validator ensuring the output path targets a JSON file.
+
+    Args:
+        path (str): The file path provided via CLI.
+
+    Raises:
+        argparse.ArgumentTypeError: If the file lacks a .json extension.
+
+    Returns:
+        str: The validated file path.
+    """
     if not path.endswith('.json'):
         raise argparse.ArgumentTypeError(
             f"The output file '{path}' must have the .json extension"
@@ -28,6 +53,18 @@ def valid_output_path(path: str) -> str:
 
 
 def main() -> None:
+    """
+    Main entry point for the Call Me Maybe constrained JSON generator.
+
+    Parses CLI arguments to load system contexts, vocabulary, and user prompts.
+    Applies strict logit constraints to the LLM generation process to extract
+    100% compliant JSON structures aligned with dynamically loaded Pydantic
+    schemas.
+    Outputs the extracted function calls to the specified JSON destination.
+
+    Returns:
+        None
+    """
     parser = argparse.ArgumentParser(
         description="Constraint JSON generator for LLM")
     parser.add_argument(
