@@ -9,24 +9,42 @@ from .generation import (get_token_masks, force_sequence,
                          generate_pydantic_object)
 
 
+def existing_json_file(path: str) -> str:
+    if not os.path.isfile(path):
+        raise argparse.ArgumentTypeError(f"The file '{path}' cannot be found.")
+    if not path.endswith('.json'):
+        raise argparse.ArgumentTypeError(
+            f"The input file '{path}' must have the .json extension."
+        )
+    return path
+
+
+def valid_output_path(path: str) -> str:
+    if not path.endswith('.json'):
+        raise argparse.ArgumentTypeError(
+            f"The output file '{path}' must have the .json extension"
+        )
+    return path
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Constraint JSON generator for LLM")
     parser.add_argument(
         "--functions_definition",
-        type=str,
+        type=existing_json_file,
         default="data/input/functions_definition.json",
         help="Path to the JSON file containing the functions definition"
     )
     parser.add_argument(
         "--input",
-        type=str,
+        type=existing_json_file,
         default="data/input/function_calling_tests.json",
         help="Path to the JSON file containing the prompts"
     )
     parser.add_argument(
         "--output",
-        type=str,
+        type=valid_output_path,
         default="data/output/function_calling_results.json",
         help="Destination path for the generated results"
     )
@@ -34,13 +52,17 @@ def main() -> None:
 
     model = Small_LLM_Model()
 
-    with open(args.input, 'r', encoding='utf-8') as f:
-        prompts_list = json.load(f)
+    try:
+        with open(args.input, 'r', encoding='utf-8') as f:
+            prompts_list = json.load(f)
+        with open(
+             args.functions_definition, "r", encoding="utf-8") as f:
+            system_context = f.read()
+            json.loads(system_context)
+    except json.JSONDecodeError as e:
+        parser.error(f"Syntax error in the JSON file : {e}")
     with open(model.get_path_to_vocab_file(), 'r', encoding='utf-8') as f:
         vocab = json.load(f)
-    with open(
-         args.functions_definition, "r", encoding="utf-8") as f:
-        system_context = f.read()
 
     valid_number_token_ids, valid_string_token_ids, closing_quote_token_ids, \
         valid_bool_token_ids = get_token_masks(vocab)
