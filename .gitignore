@@ -2,8 +2,6 @@
 # Environnement Python
 # =========================
 
-uv.lock
-
 # Fichiers compilés et cache
 __pycache__/
 *.py[cod]
