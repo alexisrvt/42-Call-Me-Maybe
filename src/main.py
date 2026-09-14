@@ -86,8 +86,6 @@ def main() -> None:
             "extract ALL requested data into the JSON format.\n"
             "CRITICAL: When extracting arrays or lists, you MUST include EVERY"
             " single item mentioned in the user request. "
-            "For replacement, if asked for a character (e.g. asterisks), "
-            "output EXACTLY ONE character (e.g. '*'). "
             "Do not stop early. Do not invent, hallucinate, or add extra items"
             ". Be exhaustive.\n\n"
             f"Available functions:\n{system_context}\n\n"
