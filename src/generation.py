@@ -117,7 +117,7 @@ def generate_string(
 
 def generate_number(
         model: Any, input_ids_list: list[int], vocab: dict[str, int],
-        valid_number_token_ids: list[int]) -> None:
+        valid_number_token_ids: list[int], is_float: bool = False) -> None:
     """
     Generates a constrained JSON numeric value (integer or float).
 
@@ -137,6 +137,7 @@ def generate_number(
 
     token_count = 0
     max_tokens = 15
+    generated_str = ""
 
     while True:
         logits = np.array(model.get_logits_from_input_ids(input_ids_list))
@@ -151,10 +152,14 @@ def generate_number(
 
         if best_token_id in (id_comma, id_close_brace, id_close_bracket) or \
                 token_count >= max_tokens:
+            if is_float and "." not in generated_str:
+                force_sequence(model, input_ids_list, ".0")
             break
 
         input_ids_list.append(best_token_id)
-        print(model.decode([best_token_id]), end="", flush=True)
+        token_str = model.decode([best_token_id])
+        generated_str += token_str
+        print(token_str, end="", flush=True)
 
 
 def generate_boolean(
@@ -274,7 +279,9 @@ def generate_value(
     """
     origin_type = get_origin(expected_type) or expected_type
     if origin_type in (float, int):
-        generate_number(model, input_ids_list, vocab, valid_number_token_ids)
+        is_float = (origin_type is float)
+        generate_number(
+            model, input_ids_list, vocab, valid_number_token_ids, is_float)
     elif origin_type == str:
         generate_string(
             model, input_ids_list, vocab, valid_string_token_ids,
