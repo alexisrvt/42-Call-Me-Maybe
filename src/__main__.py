@@ -114,83 +114,87 @@ def main() -> None:
     print("\nStarting generation...")
     global_start_time = time.perf_counter()
 
-    for prompt in prompts_list:
-        prompt_text = prompt["prompt"]
-        print(f"\nPrompt: '{prompt_text}'")
+    try:
+        for prompt in prompts_list:
+            prompt_text = prompt["prompt"]
+            print(f"\nPrompt: '{prompt_text}'")
 
-        full_prompt = (
-            "You are a strict and precise data extraction AI. Your task is to "
-            "extract ALL requested data into the JSON format.\n"
-            "CRITICAL: When extracting arrays or lists, you MUST include EVERY"
-            " single item mentioned in the user request. "
-            "Do not stop early. Do not invent, hallucinate, or add extra items"
-            ". Be exhaustive.\n\n"
-            f"Available functions:\n{system_context}\n\n"
-            f"User request: {prompt_text}\n"
-        )
-        input_ids_list = model.encode(full_prompt)[0].tolist()
-        initial_prompt_length = len(input_ids_list)
+            full_prompt = (
+                "You are a strict and precise data extraction AI. Your task is"
+                " to extract ALL requested data into the JSON format.\n"
+                "CRITICAL: When extracting arrays or lists, you MUST include "
+                "EVERY single item mentioned in the user request. "
+                "Do not stop early. Do not invent, hallucinate, or add extra "
+                "items. Be exhaustive.\n\n"
+                f"Available functions:\n{system_context}\n\n"
+                f"User request: {prompt_text}\n"
+            )
+            input_ids_list = model.encode(full_prompt)[0].tolist()
+            initial_prompt_length = len(input_ids_list)
 
-        logits = np.array(model.get_logits_from_input_ids(input_ids_list))
-        logits_contraints = np.full_like(logits, -np.inf)
-        logits_contraints[id_open_brace] = logits[id_open_brace]
-        best_token_id = int(np.argmax(logits_contraints))
-        input_ids_list.append(best_token_id)
-        print(model.decode([best_token_id]), end="", flush=True)
-
-        force_sequence(model, input_ids_list, '"name": "')
-
-        active_candidates = valid_function_sequences.copy()
-        name_token_index = 0
-        while True:
             logits = np.array(model.get_logits_from_input_ids(input_ids_list))
             logits_contraints = np.full_like(logits, -np.inf)
-            allowed_tokens = {
-                seq[name_token_index] for seq in active_candidates
-                if name_token_index < len(seq)
-            }
-            if not allowed_tokens:
-                break
-            for t in allowed_tokens:
-                logits_contraints[t] = logits[t]
-
+            logits_contraints[id_open_brace] = logits[id_open_brace]
             best_token_id = int(np.argmax(logits_contraints))
             input_ids_list.append(best_token_id)
             print(model.decode([best_token_id]), end="", flush=True)
 
-            active_candidates = [
-                seq for seq in active_candidates
-                if name_token_index < len(seq)
-                and seq[name_token_index] == best_token_id
-            ]
-            name_token_index += 1
+            force_sequence(model, input_ids_list, '"name": "')
 
-        force_sequence(model, input_ids_list, '", "parameters": ')
+            active_candidates = valid_function_sequences.copy()
+            name_token_index = 0
+            while True:
+                logits = np.array(
+                    model.get_logits_from_input_ids(input_ids_list))
+                logits_contraints = np.full_like(logits, -np.inf)
+                allowed_tokens = {
+                    seq[name_token_index] for seq in active_candidates
+                    if name_token_index < len(seq)
+                }
+                if not allowed_tokens:
+                    break
+                for t in allowed_tokens:
+                    logits_contraints[t] = logits[t]
 
-        current_function = model.decode(active_candidates[0])
-        current_validator = functions_validators[current_function]
+                best_token_id = int(np.argmax(logits_contraints))
+                input_ids_list.append(best_token_id)
+                print(model.decode([best_token_id]), end="", flush=True)
 
-        generate_pydantic_object(
-            model, input_ids_list, vocab, current_validator,
-            valid_number_token_ids, valid_string_token_ids,
-            closing_quote_token_ids, valid_bool_token_ids
-        )
+                active_candidates = [
+                    seq for seq in active_candidates
+                    if name_token_index < len(seq)
+                    and seq[name_token_index] == best_token_id
+                ]
+                name_token_index += 1
 
-        force_sequence(model, input_ids_list, '}')
-        print()
+            force_sequence(model, input_ids_list, '", "parameters": ')
 
-        generated_json_string = model.decode(input_ids_list[
-            initial_prompt_length:])
-        try:
-            result_dict = json.loads(generated_json_string)
-            final_obj = {
-                "prompt": prompt_text,
-                "name": result_dict["name"],
-                "parameters": result_dict["parameters"]
-            }
-            results_list.append(final_obj)
-        except json.JSONDecodeError:
-            print(f"\n Parsing error for the prompt: {prompt_text}")
+            current_function = model.decode(active_candidates[0])
+            current_validator = functions_validators[current_function]
+
+            generate_pydantic_object(
+                model, input_ids_list, vocab, current_validator,
+                valid_number_token_ids, valid_string_token_ids,
+                closing_quote_token_ids, valid_bool_token_ids
+            )
+
+            force_sequence(model, input_ids_list, '}')
+            print()
+
+            generated_json_string = model.decode(input_ids_list[
+                initial_prompt_length:])
+            try:
+                result_dict = json.loads(generated_json_string)
+                final_obj = {
+                    "prompt": prompt_text,
+                    "name": result_dict["name"],
+                    "parameters": result_dict["parameters"]
+                }
+                results_list.append(final_obj)
+            except json.JSONDecodeError:
+                print(f"\n Parsing error for the prompt: {prompt_text}")
+    except KeyboardInterrupt:
+        print("\n\nGeneration manually interrupted. Saving partial results...")
 
     global_end_time = time.perf_counter()
     total_time = global_end_time - global_start_time
