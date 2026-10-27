@@ -95,9 +95,12 @@ def main() -> None:
         with open(
              args.functions_definition, "r", encoding="utf-8") as f:
             system_context = f.read()
-            json.loads(system_context)
-    except json.JSONDecodeError as e:
-        parser.error(f"Syntax error in the JSON file : {e}")
+            functions_data = json.loads(system_context)
+        if not isinstance(prompts_list, list) or not isinstance(
+                functions_data, list) or not functions_data:
+            parser.error("Input JSON files must contain non-empty lists.")
+    except (json.JSONDecodeError, OSError) as e:
+        parser.error(f"Error reading JSON file : {e}")
     with open(model.get_path_to_vocab_file(), 'r', encoding='utf-8') as f:
         vocab = json.load(f)
 
@@ -119,15 +122,21 @@ def main() -> None:
             prompt_text = prompt["prompt"]
             print(f"\nPrompt: '{prompt_text}'")
 
+            sanitized_prompt = prompt_text.replace('"', '\\"')
             full_prompt = (
                 "You are a strict and precise data extraction AI. Your task is"
                 " to extract ALL requested data into the JSON format.\n"
                 "CRITICAL: When extracting arrays or lists, you MUST include "
                 "EVERY single item mentioned in the user request. "
                 "Do not stop early. Do not invent, hallucinate, or add extra "
-                "items. Be exhaustive.\n\n"
+                "items. Be exhaustive.\n"
+                "CRITICAL: For string and template parameters, extract the "
+                "EXACT literal text from the user request starting from the "
+                "very first word after the colon or prefix (do not skip "
+                "initial verbs, do not paraphrase, and escape any inner "
+                "quotes with a backslash).\n\n"
                 f"Available functions:\n{system_context}\n\n"
-                f"User request: {prompt_text}\n"
+                f"User request: {sanitized_prompt}\n"
             )
             input_ids_list = model.encode(full_prompt)[0].tolist()
             initial_prompt_length = len(input_ids_list)

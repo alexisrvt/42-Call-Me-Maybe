@@ -36,6 +36,11 @@ def get_token_masks(vocab: dict[str, int]) -> tuple[list[int], list[int],
         if '"' in tstr:
             if tstr.startswith('"'):
                 closing_quote_token_ids.add(tid)
+            elif (
+                '"' not in tstr.replace('\\"', '')
+                or tstr in ('Ġ"', ' "')
+            ):
+                valid_string_token_ids.add(tid)
         else:
             valid_string_token_ids.add(tid)
 
@@ -92,27 +97,65 @@ def generate_string(
     input_ids_list.append(id_quote)
     print('"', end="", flush=True)
 
+    pure_space_ids = [
+        tid for tstr, tid in vocab.items()
+        if not tstr.strip(" Ġ")
+    ]
+
     token_count = 0
     max_tokens = 40
+    generated_str = ""
 
     while True:
         logits = np.array(model.get_logits_from_input_ids(input_ids_list))
         logits_contraints = np.full_like(logits, -np.inf)
         logits_contraints[valid_string_token_ids] = logits[
             valid_string_token_ids]
-        logits_contraints[closing_quote_token_ids] = logits[
-            closing_quote_token_ids]
+        if token_count == 0:
+            logits_contraints[pure_space_ids] = -np.inf
+        else:
+            logits_contraints[closing_quote_token_ids] = logits[
+                closing_quote_token_ids]
         best_token_id = int(np.argmax(logits_contraints))
         token_count += 1
 
         if best_token_id in closing_quote_token_ids or \
                 token_count >= max_tokens:
+            odd_backslashes = (
+                len(generated_str) - len(generated_str.rstrip("\\"))
+            ) % 2 == 1
+            if token_count < max_tokens and odd_backslashes:
+                input_ids_list.append(id_quote)
+                generated_str += '"'
+                print('"', end="", flush=True)
+                continue
+            if (
+                token_count < max_tokens
+                and generated_str.count('\\"') % 2 == 1
+            ):
+                force_sequence(model, input_ids_list, '\\"')
+                generated_str += '\\"'
+                continue
             input_ids_list.append(id_quote)
             print('"', end="", flush=True)
             break
 
+        token_str = model.decode([best_token_id])
+        if token_str == ' "':
+            escaped_quote = '\\"' if token_count == 1 else ' \\"'
+            force_sequence(model, input_ids_list, escaped_quote)
+            generated_str += escaped_quote
+            continue
+
+        if token_count == 1 and token_str.startswith(" "):
+            clean_str = token_str.lstrip(" ")
+            force_sequence(model, input_ids_list, clean_str)
+            generated_str += clean_str
+            continue
+
         input_ids_list.append(best_token_id)
-        print(model.decode([best_token_id]), end="", flush=True)
+        generated_str += token_str
+        print(token_str, end="", flush=True)
 
 
 def generate_number(
@@ -144,9 +187,10 @@ def generate_number(
         logits_contraints = np.full_like(logits, -np.inf)
         logits_contraints[valid_number_token_ids] = logits[
             valid_number_token_ids]
-        logits_contraints[
-            [id_comma, id_close_brace, id_close_bracket]] = logits[
-            [id_comma, id_close_brace, id_close_bracket]]
+        if token_count > 0 and not generated_str.endswith((".", "-")):
+            logits_contraints[
+                [id_comma, id_close_brace, id_close_bracket]] = logits[
+                [id_comma, id_close_brace, id_close_bracket]]
         best_token_id = int(np.argmax(logits_contraints))
         token_count += 1
 
