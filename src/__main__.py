@@ -122,19 +122,17 @@ def main() -> None:
             prompt_text = prompt["prompt"]
             print(f"\nPrompt: '{prompt_text}'")
 
-            sanitized_prompt = prompt_text.replace('"', '\\"')
+            sanitized_prompt = (
+                prompt_text.replace('"', '\\"')
+                if ": " in prompt_text else prompt_text
+            )
             full_prompt = (
                 "You are a strict and precise data extraction AI. Your task is"
                 " to extract ALL requested data into the JSON format.\n"
                 "CRITICAL: When extracting arrays or lists, you MUST include "
                 "EVERY single item mentioned in the user request. "
                 "Do not stop early. Do not invent, hallucinate, or add extra "
-                "items. Be exhaustive.\n"
-                "CRITICAL: For string and template parameters, extract the "
-                "EXACT literal text from the user request starting from the "
-                "very first word after the colon or prefix (do not skip "
-                "initial verbs, do not paraphrase, and escape any inner "
-                "quotes with a backslash).\n\n"
+                "items. Be exhaustive.\n\n"
                 f"Available functions:\n{system_context}\n\n"
                 f"User request: {sanitized_prompt}\n"
             )

@@ -30,7 +30,7 @@ def get_token_masks(vocab: dict[str, int]) -> tuple[list[int], list[int],
     valid_string_token_ids = set()
     closing_quote_token_ids = set()
     for tstr, tid in vocab.items():
-        if any(c in invalid_string_chars for c in tstr):
+        if any(c in invalid_string_chars for c in tstr) or "**" in tstr:
             continue
 
         if '"' in tstr:
@@ -97,9 +97,13 @@ def generate_string(
     input_ids_list.append(id_quote)
     print('"', end="", flush=True)
 
-    pure_space_ids = [
+    backslash_ids = [
         tid for tstr, tid in vocab.items()
-        if not tstr.strip(" Ġ")
+        if "\\" in tstr or '"' in tstr
+    ]
+    asterisk_ids = [
+        tid for tstr, tid in vocab.items()
+        if "*" in tstr
     ]
 
     token_count = 0
@@ -111,9 +115,11 @@ def generate_string(
         logits_contraints = np.full_like(logits, -np.inf)
         logits_contraints[valid_string_token_ids] = logits[
             valid_string_token_ids]
-        if token_count == 0:
-            logits_contraints[pure_space_ids] = -np.inf
-        else:
+        if generated_str.count('\\"') >= 2:
+            logits_contraints[backslash_ids] = -np.inf
+        if generated_str.endswith("*"):
+            logits_contraints[asterisk_ids] = -np.inf
+        if token_count > 0:
             logits_contraints[closing_quote_token_ids] = logits[
                 closing_quote_token_ids]
         best_token_id = int(np.argmax(logits_contraints))
@@ -129,13 +135,8 @@ def generate_string(
                 generated_str += '"'
                 print('"', end="", flush=True)
                 continue
-            if (
-                token_count < max_tokens
-                and generated_str.count('\\"') % 2 == 1
-            ):
-                force_sequence(model, input_ids_list, '\\"')
-                generated_str += '\\"'
-                continue
+            if odd_backslashes:
+                force_sequence(model, input_ids_list, "\\")
             input_ids_list.append(id_quote)
             print('"', end="", flush=True)
             break
@@ -149,9 +150,10 @@ def generate_string(
 
         if token_count == 1 and token_str.startswith(" "):
             clean_str = token_str.lstrip(" ")
-            force_sequence(model, input_ids_list, clean_str)
-            generated_str += clean_str
-            continue
+            if clean_str:
+                force_sequence(model, input_ids_list, clean_str)
+                generated_str += clean_str
+                continue
 
         input_ids_list.append(best_token_id)
         generated_str += token_str
