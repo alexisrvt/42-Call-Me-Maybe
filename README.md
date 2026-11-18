@@ -53,7 +53,7 @@ The constrained decoding approach relies on manipulating the model's logits befo
 ## Challenges Faced
 
 * **BPE Tokenization Quirks:** The LLM's tokenizer treats `,` and `, ` (comma with a space) as completely separate tokens. Restricting the model to only the raw `,` caused its probability distribution to collapse, leading to early stopping. **Solution:** Allowed both comma tokens in the logit mask, then forced the standardized `, ` sequence manually to maintain formatting.
-* **Early List Closure (The "Lazy LLM" Problem):** Small models heavily favor closing arrays `]` prematurely when generating complex nested objects because it requires less probabilistic effort. **Solution:** Implemented a dynamic logit malus. The probability of the `]` token is penalized by `-10.0` when generating complex Pydantic sub-objects, forcing the model to scan the entire prompt context exhaustively before closing the array.
+* **Early List Closure (The "Lazy LLM" Problem):** Small models heavily favor closing arrays `]` prematurely when generating complex nested objects because it requires less probabilistic effort. **Solution:** Implemented a dynamic logit malus. The logit of the `]` token is penalized by `-10.0` when generating complex Pydantic sub-objects, forcing the model to scan the entire prompt context exhaustively before closing the array.
 
 ## Testing Strategy
 
@@ -65,5 +65,5 @@ The implementation was validated using iterative, high-complexity JSON schemas:
 
 ## Resources
 
-* **Documentation:** [Pydantic Official Documentation](https://www.google.com/search?q=https://docs.pydantic.dev/) for dynamic model generation and field inspection.
+* **Documentation:** [Pydantic Official Documentation](https://docs.pydantic.dev/) for dynamic model generation and field inspection.
 * **AI Usage:** Gemini was used as a thought partner and pair-programming assistant throughout the project. It was primarily utilized to debug BPE tokenization edge cases (identifying the space-comma token discrepancy), to design the mathematical dynamic malus strategy for array generation logits, and to refactor the codebase to satisfy the stringent requirements of `mypy --strict`.
