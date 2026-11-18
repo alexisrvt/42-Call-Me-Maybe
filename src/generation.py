@@ -112,17 +112,17 @@ def generate_string(
 
     while True:
         logits = np.array(model.get_logits_from_input_ids(input_ids_list))
-        logits_contraints = np.full_like(logits, -np.inf)
-        logits_contraints[valid_string_token_ids] = logits[
+        logits_constraints = np.full_like(logits, -np.inf)
+        logits_constraints[valid_string_token_ids] = logits[
             valid_string_token_ids]
         if generated_str.count('\\"') >= 2:
-            logits_contraints[backslash_ids] = -np.inf
+            logits_constraints[backslash_ids] = -np.inf
         if generated_str.endswith("*"):
-            logits_contraints[asterisk_ids] = -np.inf
+            logits_constraints[asterisk_ids] = -np.inf
         if token_count > 0:
-            logits_contraints[closing_quote_token_ids] = logits[
+            logits_constraints[closing_quote_token_ids] = logits[
                 closing_quote_token_ids]
-        best_token_id = int(np.argmax(logits_contraints))
+        best_token_id = int(np.argmax(logits_constraints))
         token_count += 1
 
         if best_token_id in closing_quote_token_ids or \
@@ -172,6 +172,8 @@ def generate_number(
         vocab (dict[str, int]): The tokenizer vocabulary.
         valid_number_token_ids (list[int]): Pre-calculated valid numeric
         tokens.
+        is_float (bool, optional): Whether to enforce a decimal point (.0)
+        for float fields. Defaults to False.
 
     Returns:
         None
@@ -186,14 +188,14 @@ def generate_number(
 
     while True:
         logits = np.array(model.get_logits_from_input_ids(input_ids_list))
-        logits_contraints = np.full_like(logits, -np.inf)
-        logits_contraints[valid_number_token_ids] = logits[
+        logits_constraints = np.full_like(logits, -np.inf)
+        logits_constraints[valid_number_token_ids] = logits[
             valid_number_token_ids]
         if token_count > 0 and not generated_str.endswith((".", "-")):
-            logits_contraints[
+            logits_constraints[
                 [id_comma, id_close_brace, id_close_bracket]] = logits[
                 [id_comma, id_close_brace, id_close_bracket]]
-        best_token_id = int(np.argmax(logits_contraints))
+        best_token_id = int(np.argmax(logits_constraints))
         token_count += 1
 
         if best_token_id in (id_comma, id_close_brace, id_close_bracket) or \
@@ -223,9 +225,9 @@ def generate_boolean(
         None
     """
     logits = np.array(model.get_logits_from_input_ids(input_ids_list))
-    logits_contraints = np.full_like(logits, -np.inf)
-    logits_contraints[valid_bool_token_ids] = logits[valid_bool_token_ids]
-    best_token_id = int(np.argmax(logits_contraints))
+    logits_constraints = np.full_like(logits, -np.inf)
+    logits_constraints[valid_bool_token_ids] = logits[valid_bool_token_ids]
+    best_token_id = int(np.argmax(logits_constraints))
     input_ids_list.append(best_token_id)
     print(model.decode([best_token_id]), end="", flush=True)
 
@@ -289,11 +291,11 @@ def generate_list(
         item_count += 1
 
         logits = np.array(model.get_logits_from_input_ids(input_ids_list))
-        logits_contraints = np.full_like(logits, -np.inf)
-        logits_contraints[id_comma_simple] = logits[id_comma_simple]
-        logits_contraints[id_comma_space] = logits[id_comma_space]
-        logits_contraints[id_close] = logits[id_close] - malus
-        best_token_id = int(np.argmax(logits_contraints))
+        logits_constraints = np.full_like(logits, -np.inf)
+        logits_constraints[id_comma_simple] = logits[id_comma_simple]
+        logits_constraints[id_comma_space] = logits[id_comma_space]
+        logits_constraints[id_close] = logits[id_close] - malus
+        best_token_id = int(np.argmax(logits_constraints))
         if best_token_id == id_close or item_count >= max_items:
             force_sequence(model, input_ids_list, "]")
             break
@@ -358,8 +360,8 @@ def generate_pydantic_object(
     Generates a constrained JSON object corresponding to a Pydantic model.
 
     Iterates through the model's fields, injecting keys directly via
-    `force_sequence`
-    and recursively calling `generate_value` for field values.
+    `force_sequence` and recursively calling `generate_value` for field
+    values.
 
     Args:
         model (Any): The LLM instance.
