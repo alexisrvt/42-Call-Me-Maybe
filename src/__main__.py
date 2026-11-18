@@ -87,27 +87,56 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    model = Small_LLM_Model()
-
     try:
         with open(args.input, 'r', encoding='utf-8') as f:
             prompts_list = json.load(f)
         with open(
              args.functions_definition, "r", encoding="utf-8") as f:
             system_context = f.read()
-            functions_data = json.loads(system_context)
-        if not isinstance(prompts_list, list) or not isinstance(
-                functions_data, list) or not functions_data:
-            parser.error("Input JSON files must contain non-empty lists.")
+        functions_list = load_functions(args.functions_definition)
     except (json.JSONDecodeError, OSError) as e:
-        parser.error(f"Error reading JSON file : {e}")
+        parser.error(f"Error reading JSON file: {e}")
+
+    if (
+        not isinstance(prompts_list, list)
+        or not prompts_list
+        or not all(
+            isinstance(p, dict) and isinstance(p.get("prompt"), str)
+            for p in prompts_list
+        )
+    ):
+        parser.error(
+            "Input JSON file must contain a non-empty list of objects "
+            "with a valid 'prompt' string."
+        )
+
+    if (
+        not isinstance(functions_list, list)
+        or not functions_list
+        or not all(
+            isinstance(fn, dict)
+            and isinstance(fn.get("name"), str)
+            and bool(fn.get("name"))
+            and isinstance(fn.get("parameters", {}), dict)
+            for fn in functions_list
+        )
+    ):
+        parser.error(
+            "Functions JSON file must contain a non-empty list of valid "
+            "function definitions with a 'name' string."
+        )
+
+    try:
+        functions_validators = create_dynamic_validators(functions_list)
+    except Exception as e:
+        parser.error(f"Invalid function schema definition: {e}")
+
+    model = Small_LLM_Model()
     with open(model.get_path_to_vocab_file(), 'r', encoding='utf-8') as f:
         vocab = json.load(f)
 
     valid_number_token_ids, valid_string_token_ids, closing_quote_token_ids, \
         valid_bool_token_ids = get_token_masks(vocab)
-    functions_list = load_functions(args.functions_definition)
-    functions_validators = create_dynamic_validators(functions_list)
     valid_function_sequences = [
         model.encode(func["name"])[0].tolist() for func in functions_list
     ]
@@ -140,9 +169,9 @@ def main() -> None:
             initial_prompt_length = len(input_ids_list)
 
             logits = np.array(model.get_logits_from_input_ids(input_ids_list))
-            logits_contraints = np.full_like(logits, -np.inf)
-            logits_contraints[id_open_brace] = logits[id_open_brace]
-            best_token_id = int(np.argmax(logits_contraints))
+            logits_constraints = np.full_like(logits, -np.inf)
+            logits_constraints[id_open_brace] = logits[id_open_brace]
+            best_token_id = int(np.argmax(logits_constraints))
             input_ids_list.append(best_token_id)
             print(model.decode([best_token_id]), end="", flush=True)
 
@@ -153,7 +182,7 @@ def main() -> None:
             while True:
                 logits = np.array(
                     model.get_logits_from_input_ids(input_ids_list))
-                logits_contraints = np.full_like(logits, -np.inf)
+                logits_constraints = np.full_like(logits, -np.inf)
                 allowed_tokens = {
                     seq[name_token_index] for seq in active_candidates
                     if name_token_index < len(seq)
@@ -161,9 +190,9 @@ def main() -> None:
                 if not allowed_tokens:
                     break
                 for t in allowed_tokens:
-                    logits_contraints[t] = logits[t]
+                    logits_constraints[t] = logits[t]
 
-                best_token_id = int(np.argmax(logits_contraints))
+                best_token_id = int(np.argmax(logits_constraints))
                 input_ids_list.append(best_token_id)
                 print(model.decode([best_token_id]), end="", flush=True)
 
